@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import AdminPanel from "./AdminPanel";
 
 const API = "https://lozzby.onrender.com";
 
@@ -1136,7 +1137,7 @@ function ProductCard({ product, onAdd, onBuy, sale = false }) {
 
       <div className="product-image">
         {product.image ? (
-          <img src={product.image} alt={product.name} />
+          <img src={product.image} alt={product.name || "Product"} />
         ) : (
           <div className="no-image">📦</div>
         )}
@@ -1223,7 +1224,11 @@ function OrderStatus({ order }) {
   );
 }
 
-export default function App() {
+/* =========================================================
+   SHOP APP
+========================================================= */
+
+function ShopApp() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -1267,6 +1272,7 @@ export default function App() {
       setProducts(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error(err);
+
       setError(
         "Products load হচ্ছে না। Backend check করুন।"
       );
@@ -1349,7 +1355,12 @@ export default function App() {
 
   const shownFeatured =
     featuredProducts.length > 0
-      ? featuredProducts
+      ? featuredProducts.filter((product) => {
+          return (
+            category === "All" ||
+            product.category === category
+          );
+        })
       : filteredProducts.slice(0, 5);
 
   function addToCart(product) {
@@ -1660,7 +1671,12 @@ export default function App() {
               placeholder="Search for products..."
             />
 
-            <button className="search-button">
+            <button
+              className="search-button"
+              onClick={() =>
+                scrollTo("products")
+              }
+            >
               Search
             </button>
           </div>
@@ -1968,8 +1984,7 @@ export default function App() {
         </section>
 
         {/* TRENDING */}
-        {trendingProducts.length >
-          0 && (
+        {trendingProducts.length > 0 && (
           <section className="section">
             <div className="section-title">
               <h2>
@@ -2658,4 +2673,25 @@ export default function App() {
       </footer>
     </div>
   );
+}
+
+/* =========================================================
+   MAIN APP ROUTER
+========================================================= */
+
+export default function App() {
+  const path = window.location.pathname;
+
+  console.log("CURRENT PATH:", path);
+
+  // ADMIN PANEL
+  if (
+    path === "/admin" ||
+    path.startsWith("/admin/")
+  ) {
+    return <AdminPanel />;
+  }
+
+  // NORMAL SHOP
+  return <ShopApp />;
 }

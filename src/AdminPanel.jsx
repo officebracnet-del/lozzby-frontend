@@ -53,12 +53,35 @@ export default function AdminPanel() {
   const [orderSearch, setOrderSearch] = useState("");
   const [loadingOrders, setLoadingOrders] = useState(false);
 
+  /* =========================================================
+     ID HELPER
+  ========================================================= */
+
+  const getId = (item) => {
+    if (!item) return "";
+
+    return (
+      item.id ||
+      item._id ||
+      item.product_id ||
+      item.order_id ||
+      ""
+    );
+  };
+
+  /* =========================================================
+     LOAD PRODUCTS
+  ========================================================= */
+
   const loadProducts = async () => {
     try {
       setProductLoading(true);
 
       const res = await fetch(`${API}/products`);
+
       const data = await res.json();
+
+      console.log("PRODUCT API RESPONSE:", data);
 
       if (!res.ok || !Array.isArray(data)) {
         throw new Error(
@@ -69,11 +92,16 @@ export default function AdminPanel() {
       setProducts(data);
     } catch (error) {
       console.error("Product loading error:", error);
+
       setProducts([]);
     } finally {
       setProductLoading(false);
     }
   };
+
+  /* =========================================================
+     LOAD ORDERS
+  ========================================================= */
 
   const loadOrders = async () => {
     if (!token) return;
@@ -90,6 +118,8 @@ export default function AdminPanel() {
 
       const data = await res.json();
 
+      console.log("ORDER API RESPONSE:", data);
+
       if (res.status === 401 || res.status === 403) {
         logout();
         return;
@@ -104,11 +134,16 @@ export default function AdminPanel() {
       setOrders(data);
     } catch (error) {
       console.error("Order loading error:", error);
+
       setOrders([]);
     } finally {
       setLoadingOrders(false);
     }
   };
+
+  /* =========================================================
+     LOAD DATA AFTER LOGIN
+  ========================================================= */
 
   useEffect(() => {
     if (token) {
@@ -116,6 +151,10 @@ export default function AdminPanel() {
       loadOrders();
     }
   }, [token]);
+
+  /* =========================================================
+     LOGIN
+  ========================================================= */
 
   const login = async () => {
     if (!username.trim() || !password.trim()) {
@@ -128,9 +167,11 @@ export default function AdminPanel() {
 
       const res = await fetch(`${API}/admin/login`, {
         method: "POST",
+
         headers: {
           "Content-Type": "application/json",
         },
+
         body: JSON.stringify({
           username: username.trim(),
           password,
@@ -139,18 +180,23 @@ export default function AdminPanel() {
 
       const data = await res.json();
 
+      console.log("LOGIN RESPONSE:", data);
+
       if (!res.ok || !data.token) {
         alert(data?.detail || "Login failed");
         return;
       }
 
       localStorage.setItem("token", data.token);
+
       setToken(data.token);
+
       setPassword("");
 
       alert("Login Successful");
     } catch (error) {
       console.error("Login error:", error);
+
       alert(
         "Backend is not running. Start FastAPI first."
       );
@@ -159,13 +205,23 @@ export default function AdminPanel() {
     }
   };
 
+  /* =========================================================
+     LOGOUT
+  ========================================================= */
+
   function logout() {
     localStorage.removeItem("token");
 
     setToken("");
+
     setProducts([]);
+
     setOrders([]);
   }
+
+  /* =========================================================
+     SELECT IMAGE
+  ========================================================= */
 
   const selectImage = (e) => {
     const file = e.target.files?.[0];
@@ -191,6 +247,10 @@ export default function AdminPanel() {
     reader.readAsDataURL(file);
   };
 
+  /* =========================================================
+     ADD PRODUCT
+  ========================================================= */
+
   const addProduct = async () => {
     if (!name.trim()) {
       alert("Product name is required");
@@ -212,10 +272,12 @@ export default function AdminPanel() {
 
       const res = await fetch(`${API}/products`, {
         method: "POST",
+
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
+
         body: JSON.stringify({
           name: name.trim(),
           price: Number(price),
@@ -227,21 +289,34 @@ export default function AdminPanel() {
 
       const data = await res.json();
 
+      console.log("ADD PRODUCT RESPONSE:", data);
+
       if (res.status === 401 || res.status === 403) {
         logout();
+
         alert("Session expired. Please login again.");
+
         return;
       }
 
       if (!res.ok) {
-        alert(data?.detail || "Product add failed");
+        alert(
+          data?.detail ||
+            data?.message ||
+            "Product add failed"
+        );
+
         return;
       }
 
       setName("");
+
       setPrice("");
+
       setImage("");
+
       setCategory("Electronics");
+
       setSection("Featured");
 
       await loadProducts();
@@ -249,18 +324,36 @@ export default function AdminPanel() {
       alert("Product Added Successfully");
     } catch (error) {
       console.error("Add product error:", error);
+
       alert("Backend is not running");
     } finally {
       setProductLoading(false);
     }
   };
 
+  /* =========================================================
+     DELETE PRODUCT
+  ========================================================= */
+
   const deleteProduct = async (
     productId,
     productName
   ) => {
+    console.log(
+      "DELETE PRODUCT ID:",
+      productId
+    );
+
+    console.log(
+      "DELETE PRODUCT NAME:",
+      productName
+    );
+
     if (!productId) {
-      alert("Product ID not found");
+      alert(
+        "Product ID not found.\n\nCheck browser Console to see the product data."
+      );
+
       return;
     }
 
@@ -272,9 +365,12 @@ export default function AdminPanel() {
 
     try {
       const res = await fetch(
-        `${API}/products/${encodeURIComponent(productId)}`,
+        `${API}/products/${encodeURIComponent(
+          String(productId)
+        )}`,
         {
           method: "DELETE",
+
           headers: {
             Authorization: `Bearer ${token}`,
           },
@@ -283,13 +379,28 @@ export default function AdminPanel() {
 
       const data = await res.json();
 
+      console.log(
+        "DELETE PRODUCT RESPONSE:",
+        data
+      );
+
       if (res.status === 401 || res.status === 403) {
         logout();
+
+        alert(
+          "Session expired. Please login again."
+        );
+
         return;
       }
 
       if (!res.ok) {
-        alert(data?.detail || "Delete failed");
+        alert(
+          data?.detail ||
+            data?.message ||
+            "Delete failed"
+        );
+
         return;
       }
 
@@ -297,29 +408,49 @@ export default function AdminPanel() {
 
       alert("Product Deleted Successfully");
     } catch (error) {
-      console.error("Delete product error:", error);
+      console.error(
+        "Delete product error:",
+        error
+      );
+
       alert("Backend is not running");
     }
   };
+
+  /* =========================================================
+     UPDATE ORDER STATUS
+  ========================================================= */
 
   const updateOrderStatus = async (
     orderId,
     newStatus
   ) => {
+    console.log(
+      "UPDATE ORDER ID:",
+      orderId
+    );
+
     if (!orderId) {
-      alert("Order ID not found");
+      alert(
+        "Order ID not found.\n\nCheck browser Console."
+      );
+
       return;
     }
 
     try {
       const res = await fetch(
-        `${API}/orders/${encodeURIComponent(orderId)}/status`,
+        `${API}/orders/${encodeURIComponent(
+          String(orderId)
+        )}/status`,
         {
           method: "PUT",
+
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
+
           body: JSON.stringify({
             status: newStatus,
           }),
@@ -328,21 +459,31 @@ export default function AdminPanel() {
 
       const data = await res.json();
 
+      console.log(
+        "UPDATE ORDER RESPONSE:",
+        data
+      );
+
       if (res.status === 401 || res.status === 403) {
         logout();
+
         return;
       }
 
       if (!res.ok) {
         alert(
-          data?.detail || "Status update failed"
+          data?.detail ||
+            data?.message ||
+            "Status update failed"
         );
+
         return;
       }
 
       setOrders((previousOrders) =>
         previousOrders.map((order) =>
-          order.id === orderId
+          String(getId(order)) ===
+          String(orderId)
             ? {
                 ...order,
                 status: newStatus,
@@ -351,14 +492,30 @@ export default function AdminPanel() {
         )
       );
     } catch (error) {
-      console.error("Status update error:", error);
+      console.error(
+        "Status update error:",
+        error
+      );
+
       alert("Backend is not running");
     }
   };
 
+  /* =========================================================
+     DELETE ORDER
+  ========================================================= */
+
   const deleteOrder = async (orderId) => {
+    console.log(
+      "DELETE ORDER ID:",
+      orderId
+    );
+
     if (!orderId) {
-      alert("Order ID not found");
+      alert(
+        "Order ID not found.\n\nCheck browser Console."
+      );
+
       return;
     }
 
@@ -370,9 +527,12 @@ export default function AdminPanel() {
 
     try {
       const res = await fetch(
-        `${API}/orders/${encodeURIComponent(orderId)}`,
+        `${API}/orders/${encodeURIComponent(
+          String(orderId)
+        )}`,
         {
           method: "DELETE",
+
           headers: {
             Authorization: `Bearer ${token}`,
           },
@@ -381,30 +541,49 @@ export default function AdminPanel() {
 
       const data = await res.json();
 
+      console.log(
+        "DELETE ORDER RESPONSE:",
+        data
+      );
+
       if (res.status === 401 || res.status === 403) {
         logout();
+
         return;
       }
 
       if (!res.ok) {
         alert(
-          data?.detail || "Order delete failed"
+          data?.detail ||
+            data?.message ||
+            "Order delete failed"
         );
+
         return;
       }
 
       setOrders((previousOrders) =>
         previousOrders.filter(
-          (order) => order.id !== orderId
+          (order) =>
+            String(getId(order)) !==
+            String(orderId)
         )
       );
 
       alert("Order Deleted Successfully");
     } catch (error) {
-      console.error("Delete order error:", error);
+      console.error(
+        "Delete order error:",
+        error
+      );
+
       alert("Backend is not running");
     }
   };
+
+  /* =========================================================
+     FILTER PRODUCTS
+  ========================================================= */
 
   const filteredProducts = products.filter(
     (product) => {
@@ -413,6 +592,7 @@ export default function AdminPanel() {
         ${product.category || ""}
         ${product.section || ""}
         ${product.price || ""}
+        ${getId(product)}
       `.toLowerCase();
 
       return text.includes(
@@ -420,6 +600,10 @@ export default function AdminPanel() {
       );
     }
   );
+
+  /* =========================================================
+     FILTER ORDERS
+  ========================================================= */
 
   const filteredOrders = orders.filter(
     (order) => {
@@ -430,6 +614,8 @@ export default function AdminPanel() {
           (item) =>
             `${item.name || ""} ${
               item.product_id || ""
+            } ${item.id || ""} ${
+              item._id || ""
             }`
         )
         .join(" ");
@@ -440,7 +626,7 @@ export default function AdminPanel() {
         ${order.address || ""}
         ${order.payment_method || ""}
         ${order.status || ""}
-        ${order.id || ""}
+        ${getId(order)}
         ${itemText}
       `.toLowerCase();
 
@@ -449,6 +635,10 @@ export default function AdminPanel() {
       );
     }
   );
+
+  /* =========================================================
+     LOGIN PAGE
+  ========================================================= */
 
   if (!token) {
     return (
@@ -504,9 +694,15 @@ export default function AdminPanel() {
     );
   }
 
+  /* =========================================================
+     ADMIN DASHBOARD
+  ========================================================= */
+
   return (
     <div style={page}>
       <div style={container}>
+
+        {/* HEADER */}
 
         <div style={headerCard}>
           <div>
@@ -531,6 +727,8 @@ export default function AdminPanel() {
           </button>
         </div>
 
+        {/* STATS */}
+
         <div style={statsGrid}>
           <StatCard
             icon="📦"
@@ -550,7 +748,8 @@ export default function AdminPanel() {
             value={
               orders.filter(
                 (order) =>
-                  (order.status || "Pending") ===
+                  (order.status ||
+                    "Pending") ===
                   "Pending"
               ).length
             }
@@ -562,11 +761,14 @@ export default function AdminPanel() {
             value={
               orders.filter(
                 (order) =>
-                  order.status === "Delivered"
+                  order.status ===
+                  "Delivered"
               ).length
             }
           />
         </div>
+
+        {/* ADD PRODUCT */}
 
         <div style={cardStyle}>
           <div style={sectionHeader}>
@@ -702,6 +904,8 @@ export default function AdminPanel() {
           </button>
         </div>
 
+        {/* PRODUCTS */}
+
         <div style={cardStyle}>
           <div style={sectionHeader}>
             <div>
@@ -734,7 +938,11 @@ export default function AdminPanel() {
           {!productLoading &&
             filteredProducts.length === 0 && (
               <div style={emptyBox}>
-                <div style={{ fontSize: "42px" }}>
+                <div
+                  style={{
+                    fontSize: "42px",
+                  }}
+                >
                   📦
                 </div>
 
@@ -750,85 +958,115 @@ export default function AdminPanel() {
 
           <div style={productGrid}>
             {filteredProducts.map(
-              (product, index) => (
-                <div
-                  key={
-                    product.id ||
-                    `${product.name}-${index}`
-                  }
-                  style={productCard}
-                >
+              (product, index) => {
 
-                  <div style={productImageBox}>
-                    {product.image ? (
-                      <img
-                        src={product.image}
-                        alt={
-                          product.name ||
-                          "Product"
-                        }
-                        style={productImage}
-                      />
-                    ) : (
-                      <div
+                const productId =
+                  getId(product);
+
+                return (
+                  <div
+                    key={
+                      productId ||
+                      `${product.name}-${index}`
+                    }
+                    style={productCard}
+                  >
+
+                    <div
+                      style={productImageBox}
+                    >
+                      {product.image ? (
+                        <img
+                          src={product.image}
+                          alt={
+                            product.name ||
+                            "Product"
+                          }
+                          style={productImage}
+                        />
+                      ) : (
+                        <div
+                          style={{
+                            color: "#94a3b8",
+                          }}
+                        >
+                          No Image
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={productInfo}>
+
+                      <div style={tagRow}>
+                        <span
+                          style={categoryTag}
+                        >
+                          {product.category ||
+                            "Electronics"}
+                        </span>
+
+                        <span
+                          style={sectionTag}
+                        >
+                          {product.section ||
+                            "Featured"}
+                        </span>
+                      </div>
+
+                      <h3
                         style={{
-                          color: "#94a3b8",
+                          margin:
+                            "10px 0 5px",
+                          fontSize: "17px",
                         }}
                       >
-                        No Image
+                        {product.name ||
+                          "Unnamed Product"}
+                      </h3>
+
+                      <div style={priceStyle}>
+                        ৳{" "}
+                        {Number(
+                          product.price || 0
+                        ).toLocaleString()}
                       </div>
-                    )}
-                  </div>
 
-                  <div style={productInfo}>
+                      <div
+                        style={{
+                          fontSize: "11px",
+                          color: "#94a3b8",
+                          marginBottom:
+                            "10px",
+                          wordBreak:
+                            "break-all",
+                        }}
+                      >
+                        ID:{" "}
+                        {productId ||
+                          "Not available"}
+                      </div>
 
-                    <div style={tagRow}>
-                      <span style={categoryTag}>
-                        {product.category ||
-                          "Electronics"}
-                      </span>
+                      <button
+                        onClick={() =>
+                          deleteProduct(
+                            productId,
+                            product.name
+                          )
+                        }
+                        style={deleteButton}
+                      >
+                        🗑️ Delete Product
+                      </button>
 
-                      <span style={sectionTag}>
-                        {product.section ||
-                          "Featured"}
-                      </span>
                     </div>
-
-                    <h3
-                      style={{
-                        margin: "10px 0 5px",
-                        fontSize: "17px",
-                      }}
-                    >
-                      {product.name ||
-                        "Unnamed Product"}
-                    </h3>
-
-                    <div style={priceStyle}>
-                      ৳{" "}
-                      {Number(
-                        product.price || 0
-                      ).toLocaleString()}
-                    </div>
-
-                    <button
-                      onClick={() =>
-                        deleteProduct(
-                          product.id,
-                          product.name
-                        )
-                      }
-                      style={deleteButton}
-                    >
-                      🗑️ Delete Product
-                    </button>
-
                   </div>
-                </div>
-              )
+                );
+              }
             )}
           </div>
         </div>
+
+        {/* ORDERS */}
 
         <div style={cardStyle}>
 
@@ -866,7 +1104,11 @@ export default function AdminPanel() {
           {!loadingOrders &&
             filteredOrders.length === 0 && (
               <div style={emptyBox}>
-                <div style={{ fontSize: "42px" }}>
+                <div
+                  style={{
+                    fontSize: "42px",
+                  }}
+                >
                   🛒
                 </div>
 
@@ -884,7 +1126,10 @@ export default function AdminPanel() {
             {filteredOrders.map(
               (order, index) => (
                 <OrderCard
-                  key={order.id || index}
+                  key={
+                    getId(order) ||
+                    index
+                  }
                   order={order}
                   index={index}
                   updateOrderStatus={
@@ -901,6 +1146,10 @@ export default function AdminPanel() {
     </div>
   );
 }
+
+/* =========================================================
+   STAT CARD
+========================================================= */
 
 function StatCard({
   icon,
@@ -926,13 +1175,24 @@ function StatCard({
   );
 }
 
+/* =========================================================
+   ORDER CARD
+========================================================= */
+
 function OrderCard({
   order,
   index,
   updateOrderStatus,
   deleteOrder,
 }) {
-  const status = order.status || "Pending";
+  const status =
+    order.status || "Pending";
+
+  const orderId =
+    order.id ||
+    order._id ||
+    order.order_id ||
+    "";
 
   return (
     <div style={orderCard}>
@@ -943,8 +1203,8 @@ function OrderCard({
             🧾 Order #{index + 1}
           </div>
 
-          <div style={orderId}>
-            ID: {order.id || "N/A"}
+          <div style={orderIdStyle}>
+            ID: {orderId || "N/A"}
           </div>
         </div>
 
@@ -952,7 +1212,7 @@ function OrderCard({
           value={status}
           onChange={(e) =>
             updateOrderStatus(
-              order.id,
+              orderId,
               e.target.value
             )
           }
@@ -969,6 +1229,8 @@ function OrderCard({
         </select>
       </div>
 
+      {/* CUSTOMER */}
+
       <div style={customerBox}>
 
         <h3 style={customerTitle}>
@@ -980,7 +1242,8 @@ function OrderCard({
           <Info
             label="Name"
             value={
-              order.customer_name || "N/A"
+              order.customer_name ||
+              "N/A"
             }
           />
 
@@ -994,7 +1257,8 @@ function OrderCard({
           <Info
             label="Payment"
             value={
-              order.payment_method || "COD"
+              order.payment_method ||
+              "COD"
             }
           />
 
@@ -1008,6 +1272,8 @@ function OrderCard({
         </div>
       </div>
 
+      {/* ORDERED PRODUCTS */}
+
       <h3 style={orderedTitle}>
         📦 Ordered Products
       </h3>
@@ -1017,8 +1283,12 @@ function OrderCard({
           (item, itemIndex) => {
 
             const itemTotal =
-              Number(item.price || 0) *
-              Number(item.quantity || 0);
+              Number(
+                item.price || 0
+              ) *
+              Number(
+                item.quantity || 0
+              );
 
             return (
               <div
@@ -1026,8 +1296,9 @@ function OrderCard({
                 style={orderItem}
               >
 
-                <div style={itemImageBox}>
-
+                <div
+                  style={itemImageBox}
+                >
                   {item.image ? (
                     <img
                       src={item.image}
@@ -1046,7 +1317,6 @@ function OrderCard({
                       📦
                     </span>
                   )}
-
                 </div>
 
                 <div
@@ -1083,6 +1353,8 @@ function OrderCard({
         )}
       </div>
 
+      {/* TOTAL */}
+
       <div style={totalRow}>
         <span>
           Order Total
@@ -1098,7 +1370,7 @@ function OrderCard({
 
       <button
         onClick={() =>
-          deleteOrder(order.id)
+          deleteOrder(orderId)
         }
         style={deleteButton}
       >
@@ -1108,6 +1380,10 @@ function OrderCard({
     </div>
   );
 }
+
+/* =========================================================
+   INFO
+========================================================= */
 
 function Info({
   label,
@@ -1121,7 +1397,8 @@ function Info({
 
       <div
         style={{
-          wordBreak: "break-word",
+          wordBreak:
+            "break-word",
         }}
       >
         {value}
@@ -1129,6 +1406,10 @@ function Info({
     </div>
   );
 }
+
+/* =========================================================
+   STYLES
+========================================================= */
 
 const page = {
   minHeight: "100vh",
@@ -1531,7 +1812,7 @@ const orderNumber = {
   color: "#0f172a",
 };
 
-const orderId = {
+const orderIdStyle = {
   color: "#94a3b8",
   fontSize: "12px",
   marginTop: "4px",
