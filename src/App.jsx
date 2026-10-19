@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import AdminPanel from "./AdminPanel";
 
-const API = "https://lozzby.onrender.com";
+const API = "https://daily-drop-backend-xkkc.onrender.com";
 
 const STATUS_LIST = [
   "Pending",
