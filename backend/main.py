@@ -1,12 +1,16 @@
-from fastapi import FastAPI, HTTPException, Header, Depends
+from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from jose import jwt, JWTError
 from bson import ObjectId
-from typing import List, Optional
+from typing import Optional
 
 from database import products_collection, db
 
+
+# =========================================================
+# APP
+# =========================================================
 
 app = FastAPI(title="Lozzby Backend")
 
@@ -20,8 +24,8 @@ app.add_middleware(
     allow_origins=[
         "http://127.0.0.1:3000",
         "http://localhost:3000",
-        "http://192.168.1.104:3000",
-        "https://dailydrop-iyc5.onrender.com",
+        "http://192.168.0.106:3000",
+        "https://lozzby-frontend.onrender.com",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -30,28 +34,24 @@ app.add_middleware(
 
 
 # =========================================================
-# CONFIG
+# JWT SETTINGS
 # =========================================================
 
-SECRET_KEY = "lozzby_secret"
+SECRET_KEY = "lozzby-secret-key-change-this"
 ALGORITHM = "HS256"
 
-ADMIN_USER = {
-    "username": "admin",
-    "password": "01152008",
-}
+ADMIN_USER = "admin"
+ADMIN_PASSWORD = "01152008"
 
 
 # =========================================================
-# COLLECTIONS
+# MODELS
 # =========================================================
 
-orders_collection = db["orders"]
+class LoginRequest(BaseModel):
+    username: str
+    password: str
 
-
-# =========================================================
-# PRODUCT MODEL
-# =========================================================
 
 class Product(BaseModel):
     name: str
@@ -61,74 +61,8 @@ class Product(BaseModel):
     section: str = "Featured"
 
 
-# =========================================================
-# ORDER ITEM MODEL
-# =========================================================
-
-class OrderItem(BaseModel):
-    product_id: str = ""
-    name: str
-    price: float
-    quantity: int
-    image: str = ""
-
-
-# =========================================================
-# ORDER MODEL
-# =========================================================
-
-class Order(BaseModel):
-    customer_name: str
-    phone: str
-    address: str
-    payment_method: str = "COD"
-    items: List[OrderItem]
-    total: float
-
-
-# =========================================================
-# ADMIN AUTH
-# =========================================================
-
-def verify_admin(
-    authorization: Optional[str] = Header(default=None)
-):
-    if not authorization:
-        raise HTTPException(
-            status_code=401,
-            detail="No token provided",
-        )
-
-    parts = authorization.split(" ")
-
-    if len(parts) != 2 or parts[0].lower() != "bearer":
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid authorization",
-        )
-
-    token = parts[1]
-
-    try:
-        payload = jwt.decode(
-            token,
-            SECRET_KEY,
-            algorithms=[ALGORITHM],
-        )
-
-        if payload.get("role") != "admin":
-            raise HTTPException(
-                status_code=403,
-                detail="Not authorized as admin",
-            )
-
-        return True
-
-    except JWTError:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid or expired token",
-        )
+class OrderStatus(BaseModel):
+    status: str
 
 
 # =========================================================
@@ -143,368 +77,446 @@ def home():
 
 
 # =========================================================
-# GET PRODUCTS
+# JWT
+# =========================================================
+
+def create_token(username: str):
+
+    payload = {
+        "sub": username,
+        "role": "admin"
+    }
+
+    return jwt.encode(
+        payload,
+        SECRET_KEY,
+        algorithm=ALGORITHM
+    )
+
+
+def verify_token(token: str):
+
+    try:
+
+        payload = jwt.decode(
+            token,
+            SECRET_KEY,
+            algorithms=[ALGORITHM]
+        )
+
+        username = payload.get("sub")
+
+        if username != ADMIN_USER:
+            raise HTTPException(
+                status_code=403,
+                detail="Invalid admin"
+            )
+
+        return username
+
+    except JWTError:
+
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or expired token"
+        )
+
+
+async def admin_required(
+    authorization: Optional[str] = Header(None)
+):
+
+    if not authorization:
+
+        raise HTTPException(
+            status_code=401,
+            detail="Authorization required"
+        )
+
+    if not authorization.startswith("Bearer "):
+
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid authorization header"
+        )
+
+    token = authorization.replace(
+        "Bearer ",
+        "",
+        1
+    ).strip()
+
+    if not token:
+
+        raise HTTPException(
+            status_code=401,
+            detail="Token missing"
+        )
+
+    return verify_token(token)
+
+
+# =========================================================
+# LOGIN
+# =========================================================
+
+@app.post("/admin/login")
+def admin_login(data: LoginRequest):
+
+    if (
+        data.username != ADMIN_USER
+        or data.password != ADMIN_PASSWORD
+    ):
+
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid username or password"
+        )
+
+    token = create_token(
+        data.username
+    )
+
+    return {
+        "message": "Login successful",
+        "token": token
+    }
+
+
+# =========================================================
+# PRODUCTS - GET
 # =========================================================
 
 @app.get("/products")
 def get_products():
 
-    products = []
+    try:
 
-    for product in products_collection.find().sort("_id", -1):
+        products = list(
+            products_collection.find({})
+        )
 
-        product["id"] = str(product["_id"])
+        result = []
 
-        del product["_id"]
+        for product in products:
 
-        products.append(product)
+            product["_id"] = str(
+                product["_id"]
+            )
 
-    return products
+            result.append(product)
+
+        return result
+
+    except Exception as error:
+
+        print(
+            "PRODUCT GET ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Could not load products"
+        )
 
 
 # =========================================================
-# ADD PRODUCT
+# PRODUCTS - POST
 # =========================================================
 
 @app.post("/products")
 def add_product(
     product: Product,
-    admin=Depends(verify_admin),
+    admin=Depends(admin_required)
 ):
 
-    product_data = {
-        "name": product.name.strip(),
-        "price": product.price,
-        "image": product.image,
-        "category": product.category,
-        "section": product.section,
-    }
+    try:
 
-    if not product_data["name"]:
-        raise HTTPException(
-            status_code=400,
-            detail="Product name is required",
+        existing = products_collection.find_one(
+            {
+                "name": product.name
+            }
         )
 
-    if product.price < 0:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid product price",
+        if existing:
+
+            raise HTTPException(
+                status_code=400,
+                detail="Product with this name already exists"
+            )
+
+        new_product = {
+            "name": product.name,
+            "price": product.price,
+            "image": product.image,
+            "category": product.category,
+            "section": product.section,
+        }
+
+        result = products_collection.insert_one(
+            new_product
         )
 
-    result = products_collection.insert_one(
-        product_data
-    )
+        return {
+            "message": "Product added successfully",
+            "id": str(result.inserted_id)
+        }
 
-    return {
-        "message": "Product Added Successfully",
-        "id": str(result.inserted_id),
-        "product": {
-            "id": str(result.inserted_id),
-            **product_data,
-        },
-    }
+    except HTTPException:
+        raise
+
+    except Exception as error:
+
+        print(
+            "PRODUCT ADD ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Could not add product"
+        )
 
 
 # =========================================================
-# DELETE PRODUCT
+# PRODUCTS - DELETE
+# Supports MongoDB ID OR product name
 # =========================================================
 
 @app.delete("/products/{product_id}")
 def delete_product(
     product_id: str,
-    admin=Depends(verify_admin),
+    admin=Depends(admin_required)
 ):
 
-    if not ObjectId.is_valid(product_id):
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid product ID",
-        )
+    try:
 
-    result = products_collection.delete_one(
-        {
-            "_id": ObjectId(product_id)
-        }
-    )
+        # Try MongoDB ObjectId first
+        if ObjectId.is_valid(product_id):
 
-    if result.deleted_count == 0:
-        raise HTTPException(
-            status_code=404,
-            detail="Product not found",
-        )
+            result = products_collection.delete_one(
+                {
+                    "_id": ObjectId(product_id)
+                }
+            )
 
-    return {
-        "message": "Product Deleted Successfully"
-    }
+        else:
 
+            # Fallback to product name
+            result = products_collection.delete_one(
+                {
+                    "name": product_id
+                }
+            )
 
-# =========================================================
-# ADMIN LOGIN
-# =========================================================
+        if result.deleted_count == 0:
 
-@app.post("/admin/login")
-def admin_login(data: dict):
-
-    username = data.get("username")
-    password = data.get("password")
-
-    if (
-        username == ADMIN_USER["username"]
-        and password == ADMIN_USER["password"]
-    ):
-
-        token = jwt.encode(
-            {
-                "role": "admin",
-                "username": username,
-            },
-            SECRET_KEY,
-            algorithm=ALGORITHM,
-        )
+            raise HTTPException(
+                status_code=404,
+                detail="Product not found"
+            )
 
         return {
-            "token": token
+            "message": "Product deleted successfully"
         }
 
-    raise HTTPException(
-        status_code=401,
-        detail="Wrong username or password",
-    )
+    except HTTPException:
+        raise
+
+    except Exception as error:
+
+        print(
+            "PRODUCT DELETE ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Could not delete product"
+        )
 
 
 # =========================================================
-# CREATE ORDER
+# ORDERS COLLECTION
 # =========================================================
 
-@app.post("/orders")
-def create_order(order: Order):
-
-    if not order.customer_name.strip():
-        raise HTTPException(
-            status_code=400,
-            detail="Customer name is required",
-        )
-
-    if not order.phone.strip():
-        raise HTTPException(
-            status_code=400,
-            detail="Phone number is required",
-        )
-
-    if not order.address.strip():
-        raise HTTPException(
-            status_code=400,
-            detail="Address is required",
-        )
-
-    if len(order.items) == 0:
-        raise HTTPException(
-            status_code=400,
-            detail="Cart is empty",
-        )
-
-    if order.total <= 0:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid total",
-        )
-
-    new_order = {
-        "customer_name": order.customer_name.strip(),
-        "phone": order.phone.strip(),
-        "address": order.address.strip(),
-        "payment_method": order.payment_method,
-        "items": [
-            item.dict()
-            for item in order.items
-        ],
-        "total": order.total,
-        "status": "Pending",
-    }
-
-    result = orders_collection.insert_one(
-        new_order
-    )
-
-    return {
-        "message": "Order placed successfully",
-        "order_id": str(result.inserted_id),
-        "status": "Pending",
-    }
+orders_collection = db["orders"]
 
 
 # =========================================================
-# TRACK ORDER
-# =========================================================
-
-@app.get("/orders/{order_id}/track")
-def track_order(order_id: str):
-
-    if not ObjectId.is_valid(order_id):
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid order ID",
-        )
-
-    order = orders_collection.find_one(
-        {
-            "_id": ObjectId(order_id)
-        }
-    )
-
-    if not order:
-        raise HTTPException(
-            status_code=404,
-            detail="Order not found",
-        )
-
-    return {
-        "order_id": str(order["_id"]),
-        "customer_name": order.get(
-            "customer_name",
-            "",
-        ),
-        "phone": order.get(
-            "phone",
-            "",
-        ),
-        "address": order.get(
-            "address",
-            "",
-        ),
-        "status": order.get(
-            "status",
-            "Pending",
-        ),
-        "items": order.get(
-            "items",
-            [],
-        ),
-        "total": order.get(
-            "total",
-            0,
-        ),
-        "payment_method": order.get(
-            "payment_method",
-            "COD",
-        ),
-        "created_at": order["_id"].generation_time.isoformat(),
-    }
-
-
-# =========================================================
-# GET ALL ORDERS
+# ORDERS - GET
 # =========================================================
 
 @app.get("/orders")
 def get_orders(
-    admin=Depends(verify_admin),
+    admin=Depends(admin_required)
 ):
 
-    orders = []
+    try:
 
-    for order in orders_collection.find().sort(
-        "_id",
-        -1,
-    ):
-
-        order["id"] = str(
-            order["_id"]
+        orders = list(
+            orders_collection.find({})
         )
 
-        del order["_id"]
+        result = []
 
-        orders.append(order)
+        for order in orders:
 
-    return orders
+            order["_id"] = str(
+                order["_id"]
+            )
+
+            result.append(order)
+
+        return result
+
+    except Exception as error:
+
+        print(
+            "ORDER GET ERROR:",
+            repr(error)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Could not load orders"
+        )
 
 
 # =========================================================
-# UPDATE ORDER STATUS
+# ORDERS - UPDATE STATUS
 # =========================================================
 
 @app.put("/orders/{order_id}/status")
 def update_order_status(
     order_id: str,
-    data: dict,
-    admin=Depends(verify_admin),
+    data: OrderStatus,
+    admin=Depends(admin_required)
 ):
 
-    allowed_statuses = [
-        "Pending",
-        "Confirmed",
-        "Processing",
-        "Shipped",
-        "Delivered",
-        "Cancelled",
-    ]
+    try:
 
-    status = data.get("status")
+        allowed_statuses = [
+            "Pending",
+            "Confirmed",
+            "Processing",
+            "Shipped",
+            "Delivered",
+            "Cancelled",
+        ]
 
-    if status not in allowed_statuses:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid order status",
+        if data.status not in allowed_statuses:
+
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid order status"
+            )
+
+        if ObjectId.is_valid(order_id):
+
+            result = orders_collection.update_one(
+                {
+                    "_id": ObjectId(order_id)
+                },
+                {
+                    "$set": {
+                        "status": data.status
+                    }
+                }
+            )
+
+        else:
+
+            result = orders_collection.update_one(
+                {
+                    "order_id": order_id
+                },
+                {
+                    "$set": {
+                        "status": data.status
+                    }
+                }
+            )
+
+        if result.matched_count == 0:
+
+            raise HTTPException(
+                status_code=404,
+                detail="Order not found"
+            )
+
+        return {
+            "message": "Order status updated",
+            "status": data.status
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+
+        print(
+            "ORDER STATUS ERROR:",
+            repr(error)
         )
 
-    if not ObjectId.is_valid(order_id):
         raise HTTPException(
-            status_code=400,
-            detail="Invalid order ID",
+            status_code=500,
+            detail="Could not update order status"
         )
-
-    result = orders_collection.update_one(
-        {
-            "_id": ObjectId(order_id)
-        },
-        {
-            "$set": {
-                "status": status
-            }
-        },
-    )
-
-    if result.matched_count == 0:
-        raise HTTPException(
-            status_code=404,
-            detail="Order not found",
-        )
-
-    return {
-        "message": "Order status updated",
-        "status": status,
-    }
 
 
 # =========================================================
-# DELETE ORDER
+# ORDERS - DELETE
 # =========================================================
 
 @app.delete("/orders/{order_id}")
 def delete_order(
     order_id: str,
-    admin=Depends(verify_admin),
+    admin=Depends(admin_required)
 ):
 
-    if not ObjectId.is_valid(order_id):
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid order ID",
-        )
+    try:
 
-    result = orders_collection.delete_one(
-        {
-            "_id": ObjectId(order_id)
+        if ObjectId.is_valid(order_id):
+
+            result = orders_collection.delete_one(
+                {
+                    "_id": ObjectId(order_id)
+                }
+            )
+
+        else:
+
+            result = orders_collection.delete_one(
+                {
+                    "order_id": order_id
+                }
+            )
+
+        if result.deleted_count == 0:
+
+            raise HTTPException(
+                status_code=404,
+                detail="Order not found"
+            )
+
+        return {
+            "message": "Order deleted successfully"
         }
-    )
 
-    if result.deleted_count == 0:
-        raise HTTPException(
-            status_code=404,
-            detail="Order not found",
+    except HTTPException:
+        raise
+
+    except Exception as error:
+
+        print(
+            "ORDER DELETE ERROR:",
+            repr(error)
         )
 
-    return {
-        "message": "Order Deleted Successfully"
-    }
+        raise HTTPException(
+            status_code=500,
+            detail="Could not delete order"
+        )
